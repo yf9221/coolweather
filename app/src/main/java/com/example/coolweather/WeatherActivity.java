@@ -1,13 +1,19 @@
 package com.example.coolweather;
 
 
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.view.GravityCompat;
 import androidx.drawerlayout.widget.DrawerLayout;
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 
+import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import android.os.Message;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.widget.Button;
@@ -22,13 +28,18 @@ import com.example.coolweather.gson.Forecast;
 import com.example.coolweather.gson.Now;
 import com.example.coolweather.gson.Suggestion;
 import com.example.coolweather.gson.Weather;
+import com.example.coolweather.service.AutoUpdateService;
 import com.example.coolweather.util.HttpUtil;
 import com.example.coolweather.util.Utility;
+import com.example.coolweather.util.WeatherIcon;
 import com.gyf.immersionbar.ImmersionBar;
 import org.jetbrains.annotations.NotNull;
 import java.io.IOException;
+import java.lang.ref.WeakReference;
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.Random;
+
 import okhttp3.Call;
 import okhttp3.Callback;
 import okhttp3.Response;
@@ -50,14 +61,14 @@ public class WeatherActivity extends AppCompatActivity {
     private String mFcUrl;
     private String mAqiUrl;
     private String mSuggestionUrl;
-
-
     private String mCountyName;
     private ImageView mPingPicImg;
     public SwipeRefreshLayout mSwipeRefreshLayout;
     private String mLocationId;
     public DrawerLayout mDrawerLayout;
     private Button mNavButton;
+    private ImageView mWeatherIcon;
+    private static Handler mHandler=BaseApplication.getHandler();
 
 
     @Override
@@ -88,21 +99,21 @@ public class WeatherActivity extends AppCompatActivity {
         mDrawerLayout = this.findViewById(R.id.drawer_layout);
         mDrawerLayout.setScrimColor(getResources().getColor(R.color.colorWhite));
         mNavButton = this.findViewById(R.id.nav_button);
+        mWeatherIcon = this.findViewById(R.id.weather_icon);
         SharedPreferences preferences=getPreferences(this.MODE_PRIVATE);
-        String bingPic=preferences.getString("bing_pic",null);
+      /*  String bingPic=preferences.getString("bing_pic",null);
         if (bingPic != null) {
             Glide.with(this).load(bingPic).into(mPingPicImg);
         }else {
           loadBingPic();
-        }
+        }*/
         String responseNow =preferences.getString("responseNow",null);
         String responseForecast =preferences.getString("responseForecast",null);
         String responseAqi =preferences.getString("responseAqi",null);
         String responseSuggestion =preferences.getString("responseSuggestion",null);
-        mCountyName = getIntent().getStringExtra("countyName");
         mLocationId = preferences.getString("locationId",null);
-        //String countyName = preferences.getString("countyName",null);
-        if (responseNow!=null&&responseForecast!=null&&responseAqi!=null&&responseSuggestion!=null){
+        mCountyName = preferences.getString("countyName",null);
+        if (responseNow!=null&&responseForecast!=null&&responseAqi!=null&&responseSuggestion!=null&&mLocationId!=null&&mCountyName!=null){
             mWeather=new Weather();
             //有缓存时直接解析天气数据
             Now now = Utility.handleNowResponse(responseNow);
@@ -120,6 +131,7 @@ public class WeatherActivity extends AppCompatActivity {
             showWeatherInfo(mWeather);
         }else {
             //无缓存时去服务器查询天气
+            mCountyName = getIntent().getStringExtra("countyName");
             mLocationId=getIntent().getStringExtra("locationId");
             weatherLayout.setVisibility(View.INVISIBLE);
             requestWeather(mLocationId);
@@ -270,7 +282,7 @@ public class WeatherActivity extends AppCompatActivity {
 
                     }
                 });
-                  loadBingPic();
+
             }
         });
 
@@ -280,6 +292,7 @@ public class WeatherActivity extends AppCompatActivity {
 
 
     private void showWeatherInfo(Weather weather) {
+              mLocationId=weather.basic.locationId;
               String cityName=weather.basic.cityName;
               //String updateTime=weather.now.updateTime;
               String degree=weather.now.temperature+"°C";
@@ -290,6 +303,7 @@ public class WeatherActivity extends AppCompatActivity {
               titleUpdateTime.setText(simpleDateFormat.format(date));
               degreeText.setText(degree);
               weatherInfoText.setText(weatherInfo);
+              mWeatherIcon.setImageResource(WeatherIcon.getWeatherIcon(weatherInfo,this));
               forcecastLayout.removeAllViews();
         for (Forecast.DailyBean dailyBean : weather.ForecastList.daily) {
             View view= LayoutInflater.from(this).inflate(R.layout.forcast_item,forcecastLayout,false);
@@ -297,10 +311,16 @@ public class WeatherActivity extends AppCompatActivity {
             TextView infoText=view.findViewById(R.id.info_text);
             TextView maxText=view.findViewById(R.id.max_text);
             TextView minText=view.findViewById(R.id.min_text);
+            ImageView weatherItemIcon=view.findViewById(R.id.weather_item_icon);
+            ImageView tempMaxIcon=view.findViewById(R.id.temp_max);
+            ImageView tempMinIcon=view.findViewById(R.id.temp_min);
             dateText.setText(dailyBean.date);
             infoText.setText(dailyBean.info);
             maxText.setText(dailyBean.max);
             minText.setText(dailyBean.min);
+            weatherItemIcon.setImageResource(WeatherIcon.getWeatherIcon(dailyBean.getInfo(),this));
+            tempMaxIcon.setImageResource(WeatherIcon.getWeatherIcon("热",this));
+            tempMinIcon.setImageResource(WeatherIcon.getWeatherIcon("冷",this));
             forcecastLayout.addView(view);
         }
         if (weather.aqi != null) {
@@ -308,13 +328,18 @@ public class WeatherActivity extends AppCompatActivity {
             pm25Text.setText(weather.aqi.pm25);
         }
 
-            String comfort="舒适度："+weather.suggestion.daily.get(0).text;
-            String carWash="洗车指数："+weather.suggestion.daily.get(1).text;
-            String sport="运动建议："+weather.suggestion.daily.get(2).text;
+            String comfort="舒适度："+weather.suggestion.daily.get(2).text;
+            String carWash="洗车指数："+weather.suggestion.daily.get(0).text;
+            String sport="运动建议："+weather.suggestion.daily.get(1).text;
             comfortText.setText(comfort);
             carWashText.setText(carWash);
             sportText.setText(sport);
             weatherLayout.setVisibility(View.VISIBLE);
+            Random random=new Random();
+            int f=random.nextInt(6)+1;
+            mPingPicImg.setImageResource(getResources().getIdentifier("bg"+f,"mipmap",getPackageName()));
+       /* Intent intent=new Intent(this, AutoUpdateService.class);
+        startService(intent);*/
 
 
     }
@@ -326,4 +351,7 @@ public class WeatherActivity extends AppCompatActivity {
     public void setCountyName(String countyName) {
         mCountyName = countyName;
     }
+
+
+
 }

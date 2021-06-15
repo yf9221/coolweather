@@ -3,6 +3,9 @@ package com.example.coolweather.Fragment;
 import android.app.ProgressDialog;
 import android.content.Intent;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import android.os.Message;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -18,9 +21,12 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.fragment.app.Fragment;
 
+import com.example.coolweather.BaseApplication;
 import com.example.coolweather.MainActivity;
 import com.example.coolweather.R;
 import com.example.coolweather.WeatherActivity;
+import com.example.coolweather.callback.DataCallBack;
+import com.example.coolweather.callback.callback;
 import com.example.coolweather.db.City;
 import com.example.coolweather.db.County;
 import com.example.coolweather.db.Province;
@@ -36,7 +42,7 @@ import okhttp3.Callback;
 import okhttp3.Response;
 
 
-public class ChooseAreaFragment extends Fragment {
+public class ChooseAreaFragment extends Fragment implements callback {
 
     public static final int LEVEL_PROVINCE=0;
     public static final int LEVEL_CITY=1;
@@ -48,11 +54,12 @@ public class ChooseAreaFragment extends Fragment {
     private ListView listView;
     private ArrayAdapter<String> adapter;
     private List<String> dataList=new ArrayList<>();
+    boolean isDataOK=false;
 
     /**
-     * 省列表
-     */
-  private List<Province> proninceList;
+             * 省列表
+             */
+    private List<Province> proninceList;
     /**
      * 市列表
      */
@@ -82,6 +89,8 @@ public class ChooseAreaFragment extends Fragment {
         backButton=view.findViewById(R.id.back_button);
         listView=view.findViewById(R.id.list_view);
         adapter=new ArrayAdapter<>(getContext(),R.layout.support_simple_spinner_dropdown_item,dataList);
+        DataCallBack dataCallBack=DataCallBack.getInstance();
+        dataCallBack.zhuce(this);
         listView.setAdapter(adapter);
         return view;
     }
@@ -190,6 +199,7 @@ public class ChooseAreaFragment extends Fragment {
             titleText.setText(selectedProvince.getProvinceName());
         }
         if (countyList.size()>0){
+            isDataOK=false;
             dataList.clear();
             for (County county : countyList) {
                 if(county.getLocationId()!=null){
@@ -270,10 +280,14 @@ public class ChooseAreaFragment extends Fragment {
                             result = Utility.handleProvinceResponse(responseText);
                         }else if("city".equals(type)){
                             result = Utility.handleCityResponse(responseText,selectedProvince.getProvinceName());
-                        }else if("county".equals(type)){
-                              result = Utility.handeCountyResponse(responseText);
+                        }else if("county".equals(type)&&!isMunicipality){
+                            result = Utility.handeCountyResponse(responseText,selectedCity.getCityName());
+
+                        }else if("county".equals(type)&&isMunicipality){
+                            result = Utility.handeCountyResponse(responseText,selectedProvince.getProvinceName());
+
                         }
-                        if (result){
+                            if (result){
                             getActivity().runOnUiThread(new Runnable() {
                                 @Override
                                 public void run() {
@@ -297,6 +311,19 @@ public class ChooseAreaFragment extends Fragment {
      * 关闭进度对话框
      */
     private void closeProgressDialog() {
+
+    }
+
+
+    @Override
+    public void OnResponse() {
+        isDataOK=true;
+        while (isDataOK){
+            queryCounties();
+            Log.d(TAG, "OnResponse: 正在查詢......");
+            Log.d(TAG, "OnResponse: "+isDataOK);
+
+        }
 
     }
 }

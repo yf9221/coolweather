@@ -1,10 +1,15 @@
 package com.example.coolweather.util;
 
 import android.content.Context;
+import android.os.Handler;
+import android.os.Message;
 import android.text.TextUtils;
 import android.util.Log;
 import android.widget.Toast;
 
+import com.example.coolweather.BaseApplication;
+import com.example.coolweather.WeatherActivity;
+import com.example.coolweather.callback.DataCallBack;
 import com.example.coolweather.db.City;
 import com.example.coolweather.db.County;
 import com.example.coolweather.db.Province;
@@ -19,12 +24,14 @@ import com.google.gson.reflect.TypeToken;
 
 import org.jetbrains.annotations.NotNull;
 import org.json.JSONArray;
+import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.lang.reflect.Type;
 import java.net.URLEncoder;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -35,9 +42,11 @@ import okhttp3.Response;
 
 public class Utility {
     private static final String TAG = "Utility";
-    private final static String ENCODE = "GBK";
-    private static String sCountyLocationId;
-    private static int sI;
+    private static List<String> sCountyLocationId=new ArrayList<>();
+    private static int countyPostion=0;
+    private static List<JSONObject> sCountyObjectList;
+    private static boolean isOkey=false;
+
 
 
     /**
@@ -80,7 +89,7 @@ public class Utility {
                 JSONArray cityArray = cityAll.getJSONArray("result");
                 for (int i = 0; i < cityArray.length(); i++) {
                     JSONObject cityObject = cityArray.getJSONObject(i);
-                    Log.d(TAG, "handleCityResponse: " + cityObject);
+                    //Log.d(TAG, "handleCityResponse: " + cityObject);
                     City city = new City();
                     city.setCityName(cityObject.getString("name"));
                     city.setCityCode(cityObject.getString("id"));
@@ -88,6 +97,7 @@ public class Utility {
                     city.setProvinceCode(cityObject.getString("parentid"));
                     city.save();
                 }
+
                 return true;
             } catch (Exception e) {
                 Log.d(TAG, "handleCityResponse: " + e);
@@ -97,22 +107,22 @@ public class Utility {
         return false;
     }
 
-    public static boolean handeCountyResponse(String response) {
+    public static boolean handeCountyResponse(String response,String cityName) {
         if (!TextUtils.isEmpty(response)) {
             try {
+                 sCountyObjectList = new ArrayList();
                 JSONObject countyAll = new JSONObject(response);
                 JSONArray countyArray = countyAll.getJSONArray("result");
+                getCountyLocationID(cityName);
                 for (int i = 0; i < countyArray.length(); i++) {
-                    JSONObject countyObject = countyArray.getJSONObject(i);
-                    boolean isLocationId = getCountyLocationID(countyObject.getString("name"));
-                    if (isLocationId) {
-                        County county = new County();
-                        county.setCountyName(countyObject.getString("name"));
-                        county.setLocationId(sCountyLocationId);
-                        county.setCityCode(countyObject.getString("parentid"));
-                        county.setCityName(countyObject.getString("parentname"));
-                        county.save();
-                    }
+                    JSONObject jsonObject=countyArray.getJSONObject(i);
+                    County county = new County();
+                    county.setCountyName(jsonObject.getString("name"));
+                    county.setLocationId(sCountyLocationId.get(i));
+                    county.setCityCode(jsonObject.getString("parentid"));
+                    county.setCityName(jsonObject.getString("parentname"));
+                    Log.d(TAG, "handeCountyResponse: county"+county.toString());
+                    county.save();
                 }
 
                 return true;
@@ -123,43 +133,40 @@ public class Utility {
         }
         return false;
     }
-    public static boolean getCountyLocationID(final String CountyName) {
-        Log.d(TAG,"名字为"+CountyName);
-        Log.d(TAG, "https://geoapi.qweather.com/v2/city/lookup?location=" + urlEncodeChinese(CountyName) + "&key=c4a4936cbb7b4ebc8875652a13257fa7");
-        HttpUtil.sendOkHttpReques("https://geoapi.qweather.com/v2/city/lookup?location=" + urlEncodeChinese(CountyName) + "&key=c4a4936cbb7b4ebc8875652a13257fa7", new Callback() {
 
+
+    public static void getCountyLocationID(String countyNmae){
+        /*   Log.d(TAG,"名字为"+CountyName);
+        Log.d(TAG, "https://geoapi.qweather.com/v2/city/lookup?location=" + urlEncodeChinese(CountyName) + "&key=c4a4936cbb7b4ebc8875652a13257fa7");*/
+        HttpUtil.sendOkHttpReques("https://geoapi.qweather.com/v2/city/lookup?location=" + urlEncodeChinese(countyNmae) + "&key=c4a4936cbb7b4ebc8875652a13257fa7", new Callback() {
             @Override
             public void onFailure(@NotNull Call call, @NotNull IOException e) {
-                Log.d(TAG, "onFailure: 错误+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"+e);
+                Log.d(TAG, "onFailure: 错误+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++" + e);
             }
 
             @Override
             public void onResponse(@NotNull Call call, @NotNull Response response) throws IOException {
                 String responseText = response.body().string();
                 sCountyLocationId = handleCountyLocationResponse(responseText);
-
             }
         });
-        if (sCountyLocationId != null) {
-            return  true;
-        }
-        return false;
-
-
     }
 
 
 
 
-    public static String  handleCountyLocationResponse(String response) {
+    public static List<String>  handleCountyLocationResponse(String response) {
         if (!TextUtils.isEmpty(response)) {
             try {
                 JSONObject countyAll = new JSONObject(response);
                 JSONArray countyArray = countyAll.getJSONArray("location");
-                JSONObject countyObject = countyArray.getJSONObject(0);
-                String countyLocationId=countyObject.getString("id");
-                Log.d(TAG, "handleCountyLocationResponse: 得到的locationID为"+countyLocationId);
-                return countyLocationId;
+                List<String>countyLocationIdList=new ArrayList<>();
+                for (int i = 0; i < countyArray.length(); i++) {
+                    String countyLocationId=countyArray.getJSONObject(i).getString("id");
+                    countyLocationIdList.add(countyLocationId);
+                }
+               // Log.d(TAG, "handleCountyLocationResponse: 得到的locationID为"+countyLocationIdList.toString());
+                return countyLocationIdList;
             } catch (Exception e) {
                 e.printStackTrace();
             }
@@ -205,7 +212,6 @@ public class Utility {
             Gson gson=new Gson();
             Suggestion suggestion=gson.fromJson(jsonObject.toString(),Suggestion.class);
             List<Suggestion.DailyBean> dailyBeans=suggestion.getDaily();
-            Log.d(TAG, "handleSuggestionResponsejtyjytjtyjtyjtyj: "+dailyBeans.toString());
             return suggestion;
         }catch (Exception e){
             e.printStackTrace();
@@ -219,7 +225,6 @@ public class Utility {
              Gson gson=new Gson();
             Forecast forecasts=gson.fromJson(jsonObject.toString(), Forecast.class);
             List<Forecast.DailyBean> dailyBeans=forecasts.getDaily();
-            Log.d(TAG, "handleForecastResponse: "+  dailyBeans.toString());
             return forecasts;
         }catch (Exception e){
             e.printStackTrace();

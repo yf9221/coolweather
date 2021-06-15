@@ -16,7 +16,7 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
         ImmersionBar.with(this).statusBarColor("#100000")
                 .fitsSystemWindows(true).init();
-        SharedPreferences preferences=getPreferences(MODE_PRIVATE);
+        SharedPreferences preferences=getSharedPreferences("WeatherActivity",MODE_PRIVATE);
         String responseNow =preferences.getString("responseNow",null);
         String responseForecast =preferences.getString("responseForecast",null);
         String responseAqi =preferences.getString("responseAqi",null);
